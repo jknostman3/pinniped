@@ -42,7 +42,6 @@ const (
 )
 
 func NewHandler(
-	downstreamIssuer string,
 	idpListGetter oidc.IDPListGetter,
 	oauthHelper fosite.OAuth2Provider,
 	stateDecoder, cookieDecoder oidc.Decoder,
@@ -98,7 +97,6 @@ func NewHandler(
 		}
 
 		openIDSession := makeDownstreamSession(
-			downstreamIssuer,
 			downstreamAuthParams.Get("client_id"),
 			downstreamAuthParams.Get("nonce"),
 			username,
@@ -297,16 +295,11 @@ func getGroupsFromUpstreamIDToken(
 	return groups, nil
 }
 
-func makeDownstreamSession(issuer, clientID, nonce, username string, groups []string) *openid.DefaultSession {
-	now := time.Now()
+func makeDownstreamSession(clientID, nonce, username string, groups []string) *openid.DefaultSession {
+	now := time.Now().UTC()
 	openIDSession := &openid.DefaultSession{
 		Claims: &jwt.IDTokenClaims{
-			Issuer:      issuer,
 			Subject:     username,
-			Audience:    []string{clientID},
-			Nonce:       nonce,
-			ExpiresAt:   now.Add(downstreamIDTokenLifetime),
-			IssuedAt:    now,
 			RequestedAt: now,
 			AuthTime:    now,
 		},

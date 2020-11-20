@@ -47,7 +47,6 @@ const (
 	happyDownstreamNonce        = "test-nonce"
 	happyDownstreamStateVersion = "1"
 
-	downstreamIssuer              = "https://my-downstream-issuer.com/path"
 	downstreamRedirectURI         = "http://127.0.0.1/callback"
 	downstreamClientID            = "pinniped-cli"
 	downstreamNonce               = "some-nonce-value"
@@ -433,7 +432,7 @@ func TestCallbackEndpoint(t *testing.T) {
 			oauthHelper := oidc.FositeOauth2Helper(oauthStore, hmacSecret)
 
 			idpListGetter := oidctestutil.NewIDPListGetter(&test.idp)
-			subject := NewHandler(downstreamIssuer, idpListGetter, oauthHelper, happyStateCodec, happyCookieCodec)
+			subject := NewHandler(idpListGetter, oauthHelper, happyStateCodec, happyCookieCodec)
 			req := httptest.NewRequest(test.method, test.path, nil)
 			if test.csrfCookie != "" {
 				req.Header.Set("Cookie", test.csrfCookie)
@@ -740,14 +739,22 @@ func validateAuthcodeStorage(
 		require.NotContains(t, actualClaims.Extra, "groups")
 	}
 
-	// Check the rest of the downstream ID token's claims.
-	require.Equal(t, downstreamIssuer, actualClaims.Issuer)
-	require.Equal(t, []string{downstreamClientID}, actualClaims.Audience)
-	require.Equal(t, wantDownstreamNonce, actualClaims.Nonce)
-	testutil.RequireTimeInDelta(t, time.Now().Add(time.Minute*5), actualClaims.ExpiresAt, timeComparisonFudgeFactor)
-	testutil.RequireTimeInDelta(t, time.Now(), actualClaims.IssuedAt, timeComparisonFudgeFactor)
-	testutil.RequireTimeInDelta(t, time.Now(), actualClaims.RequestedAt, timeComparisonFudgeFactor)
-	testutil.RequireTimeInDelta(t, time.Now(), actualClaims.AuthTime, timeComparisonFudgeFactor)
+	// Check the rest of the downstream ID token's claims. Fosite wants us to set these (in UTC time).
+	testutil.RequireTimeInDelta(t, time.Now().UTC(), actualClaims.RequestedAt, timeComparisonFudgeFactor)
+	testutil.RequireTimeInDelta(t, time.Now().UTC(), actualClaims.AuthTime, timeComparisonFudgeFactor)
+	requestedAtZone, _ := actualClaims.RequestedAt.Zone()
+	require.Equal(t, "UTC", requestedAtZone)
+	authTimeZone, _ := actualClaims.AuthTime.Zone()
+	require.Equal(t, "UTC", authTimeZone)
+
+	// Fosite will set these fields for us in the token endpoint based on the store session
+	// information. Therefore, we assert that they are empty because we want the library to do the
+	// lifting for us.
+	require.Empty(t, actualClaims.Issuer)
+	require.Nil(t, actualClaims.Audience)
+	require.Empty(t, actualClaims.Nonce)
+	require.Zero(t, actualClaims.ExpiresAt)
+	require.Zero(t, actualClaims.IssuedAt)
 
 	// These are not needed yet.
 	require.Empty(t, actualClaims.JTI)
